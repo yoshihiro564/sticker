@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>LINEスタンプ量産ツール</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Noto+Serif+JP:wght@400;700;900&family=Kaisei+Decol:wght@400;700&family=Zen+Maru+Gothic:wght@400;700;900&family=Dela+Gothic+One&family=Stick&family=Yuji+Syuku&family=Hachi+Maru+Pop&display=swap" rel="stylesheet">
 <style>
   :root {
     --red: #e8003a;
@@ -351,10 +354,15 @@
 
     <label class="field-label">フォント</label>
     <div class="font-preview-row" id="fontChips">
-      <div class="font-chip active" data-font="'Hiragino Mincho ProN','Yu Mincho',serif" style="font-family:'Hiragino Mincho ProN',serif">明朝体</div>
-      <div class="font-chip" data-font="'Hiragino Sans','Noto Sans JP',sans-serif" style="font-family:'Hiragino Sans',sans-serif">ゴシック</div>
-      <div class="font-chip" data-font="'Hiragino Sans','Noto Sans JP',sans-serif;weight:900" data-weight="900" style="font-family:'Hiragino Sans',sans-serif;font-weight:900">極太ゴシック</div>
-      <div class="font-chip" data-font="'Courier New',monospace" style="font-family:'Courier New',monospace">等幅</div>
+      <div class="font-chip active" data-font="'Noto Serif JP',serif" data-weight="700" style="font-family:'Noto Serif JP',serif;font-weight:700">明朝</div>
+      <div class="font-chip" data-font="'Noto Sans JP',sans-serif" data-weight="700" style="font-family:'Noto Sans JP',sans-serif;font-weight:700">ゴシック</div>
+      <div class="font-chip" data-font="'Noto Sans JP',sans-serif" data-weight="900" style="font-family:'Noto Sans JP',sans-serif;font-weight:900">極太</div>
+      <div class="font-chip" data-font="'Dela Gothic One',sans-serif" data-weight="400" style="font-family:'Dela Gothic One',sans-serif">デラゴシック</div>
+      <div class="font-chip" data-font="'Zen Maru Gothic',sans-serif" data-weight="700" style="font-family:'Zen Maru Gothic',sans-serif;font-weight:700">丸ゴシック</div>
+      <div class="font-chip" data-font="'Kaisei Decol',serif" data-weight="700" style="font-family:'Kaisei Decol',serif;font-weight:700">kaisei</div>
+      <div class="font-chip" data-font="'Yuji Syuku',serif" data-weight="400" style="font-family:'Yuji Syuku',serif">毛筆</div>
+      <div class="font-chip" data-font="'Hachi Maru Pop',cursive" data-weight="400" style="font-family:'Hachi Maru Pop',cursive">手書き</div>
+      <div class="font-chip" data-font="'Stick',sans-serif" data-weight="400" style="font-family:'Stick',sans-serif">スティック</div>
     </div>
 
     <div class="sep"></div>
@@ -425,8 +433,8 @@
 // ---- 設定 ----
 const W = 370, H = 320;
 let stamps = []; // {text, canvas}
-let selectedFont = "'Hiragino Mincho ProN','Yu Mincho',serif";
-let selectedFontWeight = "bold";
+let selectedFont = "'Noto Serif JP',serif";
+let selectedFontWeight = "700";
 let bgMode = "transparent";
 
 // ---- 行数カウント ----
@@ -504,9 +512,8 @@ function drawStamp(text, scale) {
   let lines;
 
   for (let trySize = fontSize; trySize >= 10 * scale; trySize -= scale) {
-    const fontStr = trySize + 'px ' + selectedFont.replace(';weight:900','');
+    const fontStr = `${selectedFontWeight} ${trySize}px ` + selectedFont;
     ctx.font = fontStr;
-    ctx.fontWeight = selectedFontWeight;
 
     // 自動改行
     lines = autoWrap(ctx, text, maxW);
@@ -519,7 +526,7 @@ function drawStamp(text, scale) {
   }
 
   // 最終描画
-  const fontStr = `${selectedFontWeight} ${fontSize}px ` + selectedFont.replace(';weight:900','');
+  const fontStr = `${selectedFontWeight} ${fontSize}px ` + selectedFont;
   ctx.font = fontStr;
   ctx.fillStyle = color;
   ctx.textAlign = 'center';
@@ -537,7 +544,12 @@ function drawStamp(text, scale) {
 }
 
 function autoWrap(ctx, text, maxW) {
-  // まず全文字を1行で試す。入らなければ2分割を試みる
+  // 日本語禁則処理
+  // 行頭禁則：これらの文字は行頭に来てはいけない
+  const noStartChars = /^[、。，．・：；？！）」』】〕〉》｝￥%ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ]/;
+  // 行末禁則：これらの文字は行末に来てはいけない
+  const noEndChars = /[（「『【〔〈《｛]$/;
+
   const chars = text.split('');
   const lines = [];
   let current = '';
@@ -545,9 +557,24 @@ function autoWrap(ctx, text, maxW) {
   for (let i = 0; i < chars.length; i++) {
     const test = current + chars[i];
     const w = ctx.measureText(test).width;
+
     if (w > maxW && current.length > 0) {
-      lines.push(current);
-      current = chars[i];
+      // 禁則処理：次の文字が行頭禁則なら今の文字ごと送る
+      if (noStartChars.test(chars[i])) {
+        // 行頭禁則文字は前の行に押し込む（追い出し処理）
+        lines.push(test);
+        current = '';
+        i++; // 次へ
+        if (i < chars.length) current = chars[i];
+      } else if (noEndChars.test(current)) {
+        // 行末禁則：現在行の最後の文字を次行に送る（追い込み処理）
+        const last = current.slice(-1);
+        lines.push(current.slice(0, -1));
+        current = last + chars[i];
+      } else {
+        lines.push(current);
+        current = chars[i];
+      }
     } else {
       current = test;
     }
