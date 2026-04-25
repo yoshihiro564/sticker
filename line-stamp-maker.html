@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>LINEスタンプ量産ツール</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root {
+    --red: #e8003a;
+    --bg: #fafaf8;
+    --panel: #ffffff;
+    --border: #e8e0d8;
+    --text: #1a1a1a;
+    --muted: #888;
+    --accent: #e8003a;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0 0 60px;
+  }
+
+  header {
+    background: var(--red);
+    color: white;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 12px rgba(232,0,58,0.3);
+  }
+  header h1 {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+  }
+  header span {
+    font-size: 20px;
+  }
+
+  .container {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 20px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .card {
+    background: var(--panel);
+    border-radius: 14px;
+    padding: 18px;
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  }
+
+  .card-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  textarea {
+    width: 100%;
+    height: 160px;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.7;
+    resize: vertical;
+    outline: none;
+    background: #fdfcfb;
+    color: var(--text);
+    transition: border-color 0.2s;
+  }
+  textarea:focus { border-color: var(--red); }
+
+  .hint {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 6px;
+  }
+  .count-badge {
+    display: inline-block;
+    background: var(--red);
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 20px;
+    margin-left: 6px;
+  }
+
+  /* デザイン設定 */
+  .design-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  label.field-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #555;
+    display: block;
+    margin-bottom: 5px;
+  }
+
+  select, input[type="color"], input[type="range"], input[type="number"] {
+    width: 100%;
+    height: 38px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    padding: 0 10px;
+    font-size: 13px;
+    font-family: inherit;
+    background: #fdfcfb;
+    outline: none;
+    appearance: auto;
+  }
+  select:focus, input:focus { border-color: var(--red); }
+
+  input[type="color"] {
+    padding: 3px 6px;
+    cursor: pointer;
+  }
+
+  .range-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  input[type="range"] {
+    height: 4px;
+    padding: 0;
+    flex: 1;
+    accent-color: var(--red);
+  }
+  .range-val {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--red);
+    min-width: 32px;
+    text-align: right;
+  }
+
+  /* プレビュー */
+  .preview-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .preview-scroll {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+    scrollbar-width: thin;
+  }
+  .preview-scroll::-webkit-scrollbar { height: 4px; }
+  .preview-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .stamp-wrapper {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+
+  canvas.stamp-canvas {
+    border-radius: 8px;
+    background: repeating-conic-gradient(#ddd 0% 25%, white 0% 50%) 0 0 / 12px 12px;
+    display: block;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  canvas.stamp-canvas:hover {
+    transform: scale(1.04);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+  }
+
+  .dl-single {
+    font-size: 10px;
+    color: var(--red);
+    font-weight: 700;
+    cursor: pointer;
+    padding: 3px 10px;
+    border: 1.5px solid var(--red);
+    border-radius: 20px;
+    background: white;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .dl-single:hover { background: var(--red); color: white; }
+
+  /* アクションボタン */
+  .action-row {
+    display: flex;
+    gap: 10px;
+  }
+
+  .btn {
+    flex: 1;
+    height: 50px;
+    border: none;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.03em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn-primary {
+    background: var(--red);
+    color: white;
+    box-shadow: 0 4px 14px rgba(232,0,58,0.3);
+  }
+  .btn-primary:hover { background: #c4002e; transform: translateY(-1px); }
+  .btn-secondary {
+    background: #1a1a1a;
+    color: white;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+  }
+  .btn-secondary:hover { background: #333; transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+
+  .btn-generate {
+    width: 100%;
+    height: 54px;
+    background: var(--red);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 800;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+    box-shadow: 0 4px 18px rgba(232,0,58,0.35);
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .btn-generate:hover { background: #c4002e; transform: translateY(-1px); }
+
+  .empty-state {
+    text-align: center;
+    padding: 30px 0;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  /* フォントサンプル */
+  .font-preview-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+  }
+  .font-chip {
+    font-size: 13px;
+    padding: 4px 10px;
+    border: 1.5px solid var(--border);
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: white;
+  }
+  .font-chip.active {
+    border-color: var(--red);
+    background: #fff0f3;
+    color: var(--red);
+    font-weight: 700;
+  }
+
+  .sep { height: 1px; background: var(--border); margin: 12px 0; }
+
+  .bg-toggle {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .bg-chip {
+    flex: 1;
+    padding: 8px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .bg-chip.active {
+    border-color: var(--red);
+    background: #fff0f3;
+    color: var(--red);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <span>🎌</span>
+  <h1>LINEスタンプ量産ツール</h1>
+</header>
+
+<div class="container">
+
+  <!-- 文言入力 -->
+  <div class="card">
+    <div class="card-title">
+      文言入力
+      <span class="count-badge" id="lineCount">0行</span>
+    </div>
+    <textarea id="textInput" placeholder="1行につき1スタンプになります。&#10;例：&#10;前向きな回答を示してほしい&#10;山積する課題に取り組む&#10;誠意ある回答を示してもらいたい&#10;…最大40行"></textarea>
+    <div class="hint">📝 1行＝1スタンプ　最大40行まで対応</div>
+  </div>
+
+  <!-- デザイン設定 -->
+  <div class="card">
+    <div class="card-title">デザイン設定</div>
+
+    <label class="field-label">フォント</label>
+    <div class="font-preview-row" id="fontChips">
+      <div class="font-chip active" data-font="'Hiragino Mincho ProN','Yu Mincho',serif" style="font-family:'Hiragino Mincho ProN',serif">明朝体</div>
+      <div class="font-chip" data-font="'Hiragino Sans','Noto Sans JP',sans-serif" style="font-family:'Hiragino Sans',sans-serif">ゴシック</div>
+      <div class="font-chip" data-font="'Hiragino Sans','Noto Sans JP',sans-serif;weight:900" data-weight="900" style="font-family:'Hiragino Sans',sans-serif;font-weight:900">極太ゴシック</div>
+      <div class="font-chip" data-font="'Courier New',monospace" style="font-family:'Courier New',monospace">等幅</div>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="design-grid">
+      <div>
+        <label class="field-label">文字色</label>
+        <input type="color" id="textColor" value="#e8003a">
+      </div>
+      <div>
+        <label class="field-label">背景</label>
+        <div class="bg-toggle">
+          <div class="bg-chip active" data-bg="transparent" id="bgTransparent">透明</div>
+          <div class="bg-chip" data-bg="white" id="bgWhite">白</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+
+    <label class="field-label">最大フォントサイズ</label>
+    <div class="range-row">
+      <input type="range" id="fontSize" min="20" max="80" value="48">
+      <span class="range-val" id="fontSizeVal">48px</span>
+    </div>
+
+    <div class="sep"></div>
+
+    <label class="field-label">余白（上下左右）</label>
+    <div class="range-row">
+      <input type="range" id="padding" min="10" max="60" value="28">
+      <span class="range-val" id="paddingVal">28px</span>
+    </div>
+
+    <div class="sep"></div>
+
+    <label class="field-label">行間</label>
+    <div class="range-row">
+      <input type="range" id="lineHeight" min="100" max="200" value="145">
+      <span class="range-val" id="lineHeightVal">1.45</span>
+    </div>
+  </div>
+
+  <!-- 生成ボタン -->
+  <button class="btn-generate" id="generateBtn">
+    ✦ スタンプを生成する
+  </button>
+
+  <!-- プレビュー -->
+  <div class="card" id="previewCard" style="display:none">
+    <div class="preview-label">
+      プレビュー
+      <span id="stampCountLabel" style="color:var(--red);font-weight:800"></span>
+    </div>
+    <div class="preview-scroll" id="previewArea"></div>
+
+    <div style="margin-top:16px">
+      <div class="action-row">
+        <button class="btn btn-primary" id="zipBtn">📦 ZIPで一括DL</button>
+        <button class="btn btn-secondary" id="allSingleBtn">⬇ 全て個別DL</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ---- 設定 ----
+const W = 370, H = 320;
+let stamps = []; // {text, canvas}
+let selectedFont = "'Hiragino Mincho ProN','Yu Mincho',serif";
+let selectedFontWeight = "bold";
+let bgMode = "transparent";
+
+// ---- 行数カウント ----
+const textInput = document.getElementById('textInput');
+const lineCountEl = document.getElementById('lineCount');
+textInput.addEventListener('input', () => {
+  const lines = getLines();
+  lineCountEl.textContent = lines.length + '行';
+});
+
+function getLines() {
+  return textInput.value.split('\n')
+    .map(l => l.trim())
+    .filter(l => l.length > 0)
+    .slice(0, 40);
+}
+
+// ---- フォント選択 ----
+document.querySelectorAll('.font-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.font-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    selectedFont = chip.dataset.font;
+    selectedFontWeight = chip.dataset.weight || 'bold';
+  });
+});
+
+// ---- 背景選択 ----
+document.querySelectorAll('.bg-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.bg-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    bgMode = chip.dataset.bg;
+  });
+});
+
+// ---- range表示 ----
+const fsEl = document.getElementById('fontSize');
+const fsVal = document.getElementById('fontSizeVal');
+fsEl.addEventListener('input', () => fsVal.textContent = fsEl.value + 'px');
+
+const padEl = document.getElementById('padding');
+const padVal = document.getElementById('paddingVal');
+padEl.addEventListener('input', () => padVal.textContent = padEl.value + 'px');
+
+const lhEl = document.getElementById('lineHeight');
+const lhVal = document.getElementById('lineHeightVal');
+lhEl.addEventListener('input', () => lhVal.textContent = (lhEl.value/100).toFixed(2));
+
+// ---- スタンプ描画 ----
+function drawStamp(text, scale) {
+  scale = scale || 1;
+  const canvas = document.createElement('canvas');
+  canvas.width = W * scale;
+  canvas.height = H * scale;
+  const ctx = canvas.getContext('2d');
+
+  // 背景
+  if (bgMode === 'white') {
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, W * scale, H * scale);
+  }
+  // transparent: 何も描かない
+
+  const color = document.getElementById('textColor').value;
+  const baseFontSize = parseInt(fsEl.value);
+  const pad = parseInt(padEl.value) * scale;
+  const lhRatio = lhEl.value / 100;
+
+  const maxW = (W * scale) - pad * 2;
+  const maxH = (H * scale) - pad * 2;
+
+  // 自動最適化: フォントサイズを縮小しながら収める
+  let fontSize = baseFontSize * scale;
+  let lines;
+
+  for (let trySize = fontSize; trySize >= 10 * scale; trySize -= scale) {
+    const fontStr = trySize + 'px ' + selectedFont.replace(';weight:900','');
+    ctx.font = fontStr;
+    ctx.fontWeight = selectedFontWeight;
+
+    // 自動改行
+    lines = autoWrap(ctx, text, maxW);
+
+    const totalH = lines.length * trySize * lhRatio;
+    if (totalH <= maxH) {
+      fontSize = trySize;
+      break;
+    }
+  }
+
+  // 最終描画
+  const fontStr = `${selectedFontWeight} ${fontSize}px ` + selectedFont.replace(';weight:900','');
+  ctx.font = fontStr;
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const lineH = fontSize * lhRatio;
+  const totalH = lines.length * lineH;
+  const startY = (H * scale) / 2 - totalH / 2 + lineH / 2;
+
+  lines.forEach((line, i) => {
+    ctx.fillText(line, (W * scale) / 2, startY + i * lineH);
+  });
+
+  return canvas;
+}
+
+function autoWrap(ctx, text, maxW) {
+  // まず全文字を1行で試す。入らなければ2分割を試みる
+  const chars = text.split('');
+  const lines = [];
+  let current = '';
+
+  for (let i = 0; i < chars.length; i++) {
+    const test = current + chars[i];
+    const w = ctx.measureText(test).width;
+    if (w > maxW && current.length > 0) {
+      lines.push(current);
+      current = chars[i];
+    } else {
+      current = test;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+// ---- 生成 ----
+document.getElementById('generateBtn').addEventListener('click', () => {
+  const lines = getLines();
+  if (lines.length === 0) {
+    alert('文言を入力してください');
+    return;
+  }
+
+  stamps = [];
+  const previewArea = document.getElementById('previewArea');
+  previewArea.innerHTML = '';
+
+  lines.forEach((text, idx) => {
+    const canvas = drawStamp(text, 1);
+    stamps.push({ text, canvas });
+
+    // プレビュー表示（縮小）
+    const previewCanvas = drawStamp(text, 0.5);
+    previewCanvas.className = 'stamp-canvas';
+    previewCanvas.title = text;
+
+    const dlBtn = document.createElement('div');
+    dlBtn.className = 'dl-single';
+    dlBtn.textContent = '⬇ DL';
+    dlBtn.addEventListener('click', () => downloadSingle(canvas, idx + 1, text));
+
+    // クリックでDL
+    previewCanvas.addEventListener('click', () => downloadSingle(canvas, idx + 1, text));
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'stamp-wrapper';
+    wrapper.appendChild(previewCanvas);
+    wrapper.appendChild(dlBtn);
+    previewArea.appendChild(wrapper);
+  });
+
+  document.getElementById('previewCard').style.display = 'block';
+  document.getElementById('stampCountLabel').textContent = stamps.length + '枚生成完了';
+  document.getElementById('previewCard').scrollIntoView({ behavior: 'smooth' });
+});
+
+// ---- 個別DL ----
+function downloadSingle(canvas, num, text) {
+  const a = document.createElement('a');
+  const safe = text.replace(/[\/\\:*?"<>|]/g, '_').slice(0, 20);
+  a.download = `stamp_${String(num).padStart(2,'0')}_${safe}.png`;
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+}
+
+// ---- 全て個別DL ----
+document.getElementById('allSingleBtn').addEventListener('click', () => {
+  stamps.forEach((s, i) => {
+    setTimeout(() => downloadSingle(s.canvas, i + 1, s.text), i * 300);
+  });
+});
+
+// ---- ZIP一括DL ----
+document.getElementById('zipBtn').addEventListener('click', async () => {
+  if (stamps.length === 0) return;
+  const zip = new JSZip();
+  const folder = zip.folder('line_stamps');
+
+  stamps.forEach((s, i) => {
+    const dataURL = s.canvas.toDataURL('image/png');
+    const base64 = dataURL.split(',')[1];
+    const safe = s.text.replace(/[\/\\:*?"<>|]/g, '_').slice(0, 20);
+    folder.file(`stamp_${String(i+1).padStart(2,'0')}_${safe}.png`, base64, { base64: true });
+  });
+
+  const blob = await zip.generateAsync({ type: 'blob' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'line_stamps.zip';
+  a.click();
+});
+</script>
+</body>
+</html>
