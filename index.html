@@ -548,55 +548,116 @@ function drawStamp(text, scale) {
 }
 
 function autoWrap(ctx, text, maxW) {
-  // 日本語禁則処理
-  // 行頭禁則：これらの文字は行頭に来てはいけない
-  const noStartChars = /^[、。，．・：；？！）」』】〕〉》｝￥%ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ]/;
-  // 行末禁則：これらの文字は行末に来てはいけない
-  const noEndChars = /[（「『【〔〈《｛]$/;
+  // 行頭禁則文字（行頭に来てはいけない）
+  const noStart = new Set('、。，．・：；？！）」』】〕〉》｝ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ');
+  // 行末禁則文字（行末に来てはいけない）
+  const noEnd = new Set('（「『【〔〈《｛');
 
-  const chars = text.split('');
-  const lines = [];
-  let current = '';
+  // ---- STEP1: 文節候補の区切り点を求める ----
+  // 助詞・助動詞の直後、および読点の直後を「優先改行点」とする
+  const breakAfter = /[のをはがでにとももてへからためこそまでよりだけしかさえでもまで、。]/;
 
-  for (let i = 0; i < chars.length; i++) {
-    const test = current + chars[i];
-    const w = ctx.measureText(test).width;
+  // 候補インデックスを列挙（その文字の直後で切れる）
+  const breakPoints = [];
+  for (let i = 0; i < text.length - 1; i++) {
+    if (breakAfter.test(text[i])) breakPoints.push(i);
+  }
 
-    if (w > maxW && current.length > 0) {
-      // 禁則処理：次の文字が行頭禁則なら今の文字ごと送る
-      if (noStartChars.test(chars[i])) {
-        // 行頭禁則文字は前の行に押し込む（追い出し処理）
-        lines.push(test);
-        current = '';
-        i++; // 次へ
-        if (i < chars.length) current = chars[i];
-      } else if (noEndChars.test(current)) {
-        // 行末禁則：現在行の最後の文字を次行に送る（追い込み処理）
-        const last = current.slice(-1);
-        lines.push(current.slice(0, -1));
-        current = last + chars[i];
-      } else {
-        lines.push(current);
-        current = chars[i];
+  // ---- STEP2: 何行になるか試算して最適行数を決定 ----
+  function measureLine(s) { return ctx.measureText(s).width; }
+
+  // まず最大幅で収まる最小行数を計算（貪欲法）
+  function greedySplit(str) {
+    const result = [];
+    let start = 0;
+    while (start < str.length) {
+      let end = start + 1;
+      while (end < str.length && measureLine(str.slice(start, end + 1)) <= maxW) end++;
+      result.push(str.slice(start, end));
+      start = end;
+    }
+    return result;
+  }
+
+  const minLines = greedySplit(text).length;
+  if (minLines === 1) return [text]; // 1行に収まるならそのまま
+
+  // ---- STEP3: 行数を固定して均等分割を試みる ----
+  function splitIntoN(str, n) {
+    // n行に均等になるよう、文節区切り点を優先しながら分割
+    const len = str.length;
+    const idealLen = len / n; // 理想的な1行あたりの文字数
+
+    const result = [];
+    let start = 0;
+
+    for (let line = 0; line < n - 1; line++) {
+      const targetEnd = Math.round(idealLen * (line + 1)); // 理想的な分割位置
+
+      // 文節区切り点の中から targetEnd に最も近いものを選ぶ
+      let bestBreak = -1;
+      let bestDist = Infinity;
+
+      for (const bp of breakPoints) {
+        if (bp <= start) continue;           // 既に処理済み
+        if (bp >= len - 1) continue;         // 末尾は不要
+        const candidate = bp + 1;            // 区切り点の直後
+        const dist = Math.abs(candidate - targetEnd);
+        // その行が maxW 内に収まるか確認
+        if (measureLine(str.slice(start, candidate)) <= maxW && dist < bestDist) {
+          bestDist = dist;
+          bestBreak = candidate;
+        }
       }
-    } else {
-      current = test;
+
+      if (bestBreak === -1) {
+        // 文節点が使えない場合は幅で切る（禁則考慮）
+        let end = start + 1;
+        while (end < len && measureLine(str.slice(start, end + 1)) <= maxW) end++;
+        // 行末禁則チェック
+        while (end > start + 1 && noEnd.has(str[end - 1])) end--;
+        // 行頭禁則チェック
+        while (end < len && noStart.has(str[end])) end++;
+        bestBreak = Math.min(end, len);
+      }
+
+      result.push(str.slice(start, bestBreak));
+      start = bestBreak;
+    }
+    result.push(str.slice(start)); // 最終行
+    return result;
+  }
+
+  // ---- STEP4: 最終行が短すぎないか確認 ----
+  function isBalanced(lines) {
+    if (lines.length < 2) return true;
+    const maxLen = Math.max(...lines.map(l => measureLine(l)));
+    const minLen = Math.min(...lines.map(l => measureLine(l)));
+    // 最終行が最長行の30%未満なら不均等と判定
+    return minLen >= maxLen * 0.3;
+  }
+
+  let result = splitIntoN(text, minLines);
+
+  // 不均等なら行数を1増やして再試行
+  if (!isBalanced(result) && minLines + 1 <= text.length) {
+    const result2 = splitIntoN(text, minLines + 1);
+    // 増やした方が均等かつ全行がmaxW内に収まるなら採用
+    if (isBalanced(result2) && result2.every(l => measureLine(l) <= maxW)) {
+      result = result2;
     }
   }
-  if (current) lines.push(current);
 
-  // 最終行が1文字だけの場合、前の行から1文字借りて均等にする
-  if (lines.length >= 2) {
-    const last = lines[lines.length - 1];
-    const prev = lines[lines.length - 2];
-    if (last.length === 1 && prev.length >= 3) {
-      // 前の行の最後の1文字を最終行の先頭に移動
-      lines[lines.length - 2] = prev.slice(0, -1);
-      lines[lines.length - 1] = prev.slice(-1) + last;
+  // ---- STEP5: 禁則最終チェック ----
+  // 行頭禁則：行頭に禁則文字があれば前行末に移動
+  for (let i = 1; i < result.length; i++) {
+    while (result[i].length > 0 && noStart.has(result[i][0]) && result[i - 1].length > 0) {
+      result[i - 1] = result[i - 1] + result[i][0];
+      result[i] = result[i].slice(1);
     }
   }
-
-  return lines;
+  // 空行除去
+  return result.filter(l => l.length > 0);
 }
 
 // ---- 生成 ----
