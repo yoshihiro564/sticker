@@ -7,7 +7,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Noto+Serif+JP:wght@400;700;900&family=Kaisei+Decol:wght@400;700&family=Zen+Maru+Gothic:wght@400;700;900&family=Dela+Gothic+One&family=Stick&family=Yuji+Syuku&family=Hachi+Maru+Pop&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Noto+Serif+JP:wght@400;700;900&family=Kaisei+Decol:wght@400;700&family=Zen+Maru+Gothic:wght@400;700;900&family=Dela+Gothic+One&family=Stick&family=Yuji+Syuku&family=Hachi+Maru+Pop&family=BIZ+UDPGothic:wght@400;700&family=BIZ+UDPMincho&family=Shippori+Mincho:wght@400;700;800&family=Zen+Antique&family=Klee+One:wght@400;600&display=swap" rel="stylesheet">
 <style>
   :root {
     --red: #e8003a;
@@ -354,14 +354,18 @@
 
     <label class="field-label">フォント</label>
     <div class="font-preview-row" id="fontChips">
-      <div class="font-chip active" data-font="'Noto Serif JP',serif" data-weight="700" style="font-family:'Noto Serif JP',serif;font-weight:700">明朝</div>
-      <div class="font-chip" data-font="'Noto Sans JP',sans-serif" data-weight="700" style="font-family:'Noto Sans JP',sans-serif;font-weight:700">ゴシック</div>
-      <div class="font-chip" data-font="'Noto Sans JP',sans-serif" data-weight="900" style="font-family:'Noto Sans JP',sans-serif;font-weight:900">極太</div>
+      <div class="font-chip active" data-font="'Noto Serif JP',serif" data-weight="700" style="font-family:'Noto Serif JP',serif;font-weight:700">Noto明朝</div>
+      <div class="font-chip" data-font="'Shippori Mincho',serif" data-weight="700" style="font-family:'Shippori Mincho',serif;font-weight:700">しっぽり明朝</div>
+      <div class="font-chip" data-font="'BIZ UDPMincho',serif" data-weight="400" style="font-family:'BIZ UDPMincho',serif">BIZ明朝</div>
+      <div class="font-chip" data-font="'Zen Antique',serif" data-weight="400" style="font-family:'Zen Antique',serif">禅アンティーク</div>
+      <div class="font-chip" data-font="'Noto Sans JP',sans-serif" data-weight="700" style="font-family:'Noto Sans JP',sans-serif;font-weight:700">Notoゴシック</div>
+      <div class="font-chip" data-font="'Noto Sans JP',sans-serif" data-weight="900" style="font-family:'Noto Sans JP',sans-serif;font-weight:900">極太ゴシック</div>
+      <div class="font-chip" data-font="'BIZ UDPGothic',sans-serif" data-weight="700" style="font-family:'BIZ UDPGothic',sans-serif;font-weight:700">BIZゴシック</div>
       <div class="font-chip" data-font="'Dela Gothic One',sans-serif" data-weight="400" style="font-family:'Dela Gothic One',sans-serif">デラゴシック</div>
       <div class="font-chip" data-font="'Zen Maru Gothic',sans-serif" data-weight="700" style="font-family:'Zen Maru Gothic',sans-serif;font-weight:700">丸ゴシック</div>
-      <div class="font-chip" data-font="'Kaisei Decol',serif" data-weight="700" style="font-family:'Kaisei Decol',serif;font-weight:700">kaisei</div>
+      <div class="font-chip" data-font="'Klee One',cursive" data-weight="600" style="font-family:'Klee One',cursive;font-weight:600">クレー（手書き）</div>
       <div class="font-chip" data-font="'Yuji Syuku',serif" data-weight="400" style="font-family:'Yuji Syuku',serif">毛筆</div>
-      <div class="font-chip" data-font="'Hachi Maru Pop',cursive" data-weight="400" style="font-family:'Hachi Maru Pop',cursive">手書き</div>
+      <div class="font-chip" data-font="'Hachi Maru Pop',cursive" data-weight="400" style="font-family:'Hachi Maru Pop',cursive">はちまるポップ</div>
       <div class="font-chip" data-font="'Stick',sans-serif" data-weight="400" style="font-family:'Stick',sans-serif">スティック</div>
     </div>
 
@@ -580,6 +584,18 @@ function autoWrap(ctx, text, maxW) {
     }
   }
   if (current) lines.push(current);
+
+  // 最終行が1文字だけの場合、前の行から1文字借りて均等にする
+  if (lines.length >= 2) {
+    const last = lines[lines.length - 1];
+    const prev = lines[lines.length - 2];
+    if (last.length === 1 && prev.length >= 3) {
+      // 前の行の最後の1文字を最終行の先頭に移動
+      lines[lines.length - 2] = prev.slice(0, -1);
+      lines[lines.length - 1] = prev.slice(-1) + last;
+    }
+  }
+
   return lines;
 }
 
