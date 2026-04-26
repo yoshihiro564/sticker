@@ -548,116 +548,182 @@ function drawStamp(text, scale) {
 }
 
 function autoWrap(ctx, text, maxW) {
-  // 行頭禁則文字（行頭に来てはいけない）
+  function mw(s) { return ctx.measureText(s).width; }
+
+  // 行頭禁則
   const noStart = new Set('、。，．・：；？！）」』】〕〉》｝ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ');
-  // 行末禁則文字（行末に来てはいけない）
+  // 行末禁則
   const noEnd = new Set('（「『【〔〈《｛');
 
-  // ---- STEP1: 文節候補の区切り点を求める ----
-  // 助詞・助動詞の直後、および読点の直後を「優先改行点」とする
-  const breakAfter = /[のをはがでにとももてへからためこそまでよりだけしかさえでもまで、。]/;
+  // ---- STEP1: テキストを「語トークン」に分割 ----
+  // 複合語・助詞+体言などをひとまとまりとして扱うため、
+  // 「切ってはいけない連続パターン」を先に定義し、それ以外の助詞等の後を区切り候補とする。
+  //
+  // トークン化ルール（正規表現で先頭マッチを繰り返す）:
+  //   1. 複合語ユニット: 動詞語幹+て/で、〜まで、〜から、〜ため、〜ない、〜する、〜ある、〜いる 等
+  //   2. 読点・句点 → それ自体を1トークン（直後が区切り候補）
+  //   3. その他1文字
+  //
+  // 区切り候補 = 助詞1文字（の・を・は・が・も・へ・と・や・か・ね・よ）の直後
+  //              または読点・句点の直後
 
-  // 候補インデックスを列挙（その文字の直後で切れる）
-  const breakPoints = [];
-  for (let i = 0; i < text.length - 1; i++) {
-    if (breakAfter.test(text[i])) breakPoints.push(i);
-  }
+  // トークンに分割（貪欲マッチ）
+  const tokenPattern = /すり替え|引か|闘い抜|納得で|最後まで|防衛のため|ため(?=[に\s])|ない(?=[。、\s]|$)|する(?=[。、\s]|$)|ある(?=[。、\s]|$)|いる(?=[。、\s]|$)|できる|してい|[ぁ-ん]{1,3}(?=[A-Za-z\u4E00-\u9FFF])|[^\s]/g;
 
-  // ---- STEP2: 何行になるか試算して最適行数を決定 ----
-  function measureLine(s) { return ctx.measureText(s).width; }
+  // シンプルな方針: 1文字ずつトークン化し、
+  // 「この位置で切れるか」を判定するスコアで優先順位をつける
+  //
+  // 区切り優先度（高いほど優先）:
+  //   読点・句点の直後: 100
+  //   助詞1文字の直後: 80
+  //   助動詞語尾（て・で・に・を・は・が・も・へ）の直後: 60
+  //   複合語の境界（漢字→ひらがな、ひらがな→漢字）: 30
+  //   その他: 0（切れない）
+  //
+  // ただし「切ってはいけない組み合わせ」は優先度を-1にして禁止:
+  //   直前が「ま」→直後が「で」「し」
+  //   直前が「か」→直後が「ら」「ら」
+  //   直前が「な」→直後が「い」
+  //   直前が「す」→直後が「る」「り」
+  //   直前が「し」→直後が「て」「た」
+  //   直前が「で」→直後が「き」「す」
+  //   直前が「て」→直後が「い」「し」「き」
+  //   直前が「引」→直後が「か」
+  //   直前が「替」→直後が「え」
+  //   直前が「抜」→直後が「く」
+  //   直前が「闘」→直後が「い」
 
-  // まず最大幅で収まる最小行数を計算（貪欲法）
-  function greedySplit(str) {
-    const result = [];
-    let start = 0;
-    while (start < str.length) {
-      let end = start + 1;
-      while (end < str.length && measureLine(str.slice(start, end + 1)) <= maxW) end++;
-      result.push(str.slice(start, end));
-      start = end;
+  const FORBIDDEN_PAIRS = [
+    ['ま','で'],['ま','し'],['か','ら'],['な','い'],['す','る'],['す','り'],
+    ['し','て'],['し','た'],['で','き'],['で','す'],['て','い'],['て','し'],['て','き'],
+    ['引','か'],['替','え'],['抜','く'],['闘','い'],['り','替'],['す','り'],
+    ['納','得'],['防','衛'],['最','後'],['団','結'],['議','論'],['到','底'],
+  ];
+
+  function breakScore(str, pos) {
+    // pos: この位置の「直後」で改行するスコア
+    if (pos <= 0 || pos >= str.length) return -1;
+    const prev = str[pos - 1];
+    const curr = str[pos];
+
+    // 禁止ペア
+    for (const [a, b] of FORBIDDEN_PAIRS) {
+      if (prev === a && curr === b) return -1;
     }
-    return result;
+    // 行頭禁則
+    if (noStart.has(curr)) return -1;
+    // 行末禁則
+    if (noEnd.has(prev)) return -1;
+
+    // 読点・句点の直後
+    if ('、。，．'.includes(prev)) return 100;
+    // 助詞1文字の直後（次が漢字またはひらがなで始まる語）
+    if ('のをはがもへとやかねよ'.includes(prev)) return 80;
+    // 助動詞・接続助詞の直後
+    if ('てでにをはがも'.includes(prev)) return 60;
+    // 漢字→ひらがな の境界
+    const isKanji = c => /[\u4E00-\u9FFF]/.test(c);
+    const isHira  = c => /[ぁ-ん]/.test(c);
+    if (isKanji(prev) && isHira(curr)) return 30;
+    // ひらがな→漢字 の境界
+    if (isHira(prev) && isKanji(curr)) return 20;
+
+    return 0;
   }
 
-  const minLines = greedySplit(text).length;
-  if (minLines === 1) return [text]; // 1行に収まるならそのまま
+  // ---- STEP2: 最小行数を計算 ----
+  function minLineCount(str) {
+    let count = 1, cur = '';
+    for (const ch of str) {
+      if (mw(cur + ch) > maxW) { count++; cur = ch; }
+      else cur += ch;
+    }
+    return count;
+  }
 
-  // ---- STEP3: 行数を固定して均等分割を試みる ----
+  const minLines = minLineCount(text);
+  if (minLines === 1) return [text];
+
+  // ---- STEP3: n行への最適分割（DP） ----
+  // dp[i] = テキストの先頭i文字を処理したときの最良分割
   function splitIntoN(str, n) {
-    // n行に均等になるよう、文節区切り点を優先しながら分割
-    const len = str.length;
-    const idealLen = len / n; // 理想的な1行あたりの文字数
+    const L = str.length;
+    // 各分割点候補: 位置iで切れるかとそのスコア
+    // DPで「n-1個の区切り点」を選び、各行の幅バランスが最良になる組み合わせを探す
+
+    // まず全区切り候補を収集（幅制約を満たす範囲で）
+    // 貪欲にn行に分割するが、スコアが高い位置を優先する
+
+    // シンプルな実装: 各行ごとに「理想幅に最も近い高スコア位置」を選ぶ
+    const totalW = mw(str);
+    const idealW = totalW / n;
 
     const result = [];
     let start = 0;
 
     for (let line = 0; line < n - 1; line++) {
-      const targetEnd = Math.round(idealLen * (line + 1)); // 理想的な分割位置
+      const targetW = idealW * (line + 1); // 先頭からの累積理想幅
 
-      // 文節区切り点の中から targetEnd に最も近いものを選ぶ
-      let bestBreak = -1;
-      let bestDist = Infinity;
+      // start から進めて、候補点を収集
+      let bestPos = -1;
+      let bestScore = -Infinity;
 
-      for (const bp of breakPoints) {
-        if (bp <= start) continue;           // 既に処理済み
-        if (bp >= len - 1) continue;         // 末尾は不要
-        const candidate = bp + 1;            // 区切り点の直後
-        const dist = Math.abs(candidate - targetEnd);
-        // その行が maxW 内に収まるか確認
-        if (measureLine(str.slice(start, candidate)) <= maxW && dist < bestDist) {
-          bestDist = dist;
-          bestBreak = candidate;
+      for (let pos = start + 1; pos < L; pos++) {
+        // この行（start〜pos）が maxW を超えたら打ち切り
+        if (mw(str.slice(start, pos)) > maxW) break;
+
+        const sc = breakScore(str, pos);
+        if (sc < 0) continue; // 禁止
+
+        // 理想累積幅との距離（小さいほど良い）
+        const cumW = mw(str.slice(0, pos));
+        const distScore = -Math.abs(cumW - targetW) / totalW * 50;
+        const total = sc + distScore;
+
+        if (total > bestScore) {
+          bestScore = total;
+          bestPos = pos;
         }
       }
 
-      if (bestBreak === -1) {
-        // 文節点が使えない場合は幅で切る（禁則考慮）
-        let end = start + 1;
-        while (end < len && measureLine(str.slice(start, end + 1)) <= maxW) end++;
-        // 行末禁則チェック
-        while (end > start + 1 && noEnd.has(str[end - 1])) end--;
-        // 行頭禁則チェック
-        while (end < len && noStart.has(str[end])) end++;
-        bestBreak = Math.min(end, len);
+      if (bestPos === -1) {
+        // スコア付き候補がない場合は幅で強制分割
+        let pos = start + 1;
+        while (pos < L && mw(str.slice(start, pos + 1)) <= maxW) pos++;
+        bestPos = pos;
       }
 
-      result.push(str.slice(start, bestBreak));
-      start = bestBreak;
+      result.push(str.slice(start, bestPos));
+      start = bestPos;
     }
-    result.push(str.slice(start)); // 最終行
-    return result;
+    result.push(str.slice(start));
+    return result.filter(l => l.length > 0);
   }
 
-  // ---- STEP4: 最終行が短すぎないか確認 ----
-  function isBalanced(lines) {
-    if (lines.length < 2) return true;
-    const maxLen = Math.max(...lines.map(l => measureLine(l)));
-    const minLen = Math.min(...lines.map(l => measureLine(l)));
-    // 最終行が最長行の30%未満なら不均等と判定
-    return minLen >= maxLen * 0.3;
+  // ---- STEP4: 行数を試して最もバランスの良い結果を採用 ----
+  function balance(lines) {
+    const widths = lines.map(l => mw(l));
+    const max = Math.max(...widths);
+    const min = Math.min(...widths);
+    return min / max; // 1に近いほど均等
   }
 
-  let result = splitIntoN(text, minLines);
+  let best = splitIntoN(text, minLines);
+  let bestBalance = balance(best);
 
-  // 不均等なら行数を1増やして再試行
-  if (!isBalanced(result) && minLines + 1 <= text.length) {
-    const result2 = splitIntoN(text, minLines + 1);
-    // 増やした方が均等かつ全行がmaxW内に収まるなら採用
-    if (isBalanced(result2) && result2.every(l => measureLine(l) <= maxW)) {
-      result = result2;
-    }
-  }
-
-  // ---- STEP5: 禁則最終チェック ----
-  // 行頭禁則：行頭に禁則文字があれば前行末に移動
-  for (let i = 1; i < result.length; i++) {
-    while (result[i].length > 0 && noStart.has(result[i][0]) && result[i - 1].length > 0) {
-      result[i - 1] = result[i - 1] + result[i][0];
-      result[i] = result[i].slice(1);
+  // 行数を1〜2増やして比較
+  for (let n = minLines + 1; n <= minLines + 2 && n <= text.length; n++) {
+    const candidate = splitIntoN(text, n);
+    if (candidate.every(l => mw(l) <= maxW)) {
+      const b = balance(candidate);
+      if (b > bestBalance + 0.1) { // 10%以上改善なら採用
+        best = candidate;
+        bestBalance = b;
+      }
     }
   }
-  // 空行除去
-  return result.filter(l => l.length > 0);
+
+  return best;
 }
 
 // ---- 生成 ----
